@@ -1,0 +1,372 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "e178fe11",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "application/javascript": [
+       "\n",
+       "try {\n",
+       "require(['notebook/js/codecell'], function(codecell) {\n",
+       "  codecell.CodeCell.options_default.highlight_modes[\n",
+       "      'magic_text/x-csrc'] = {'reg':[/^%%microblaze/]};\n",
+       "  Jupyter.notebook.events.one('kernel_ready.Kernel', function(){\n",
+       "      Jupyter.notebook.get_cells().map(function(cell){\n",
+       "          if (cell.cell_type == 'code'){ cell.auto_highlight(); } }) ;\n",
+       "  });\n",
+       "});\n",
+       "} catch (e) {};\n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "application/javascript": [
+       "\n",
+       "try {\n",
+       "require(['notebook/js/codecell'], function(codecell) {\n",
+       "  codecell.CodeCell.options_default.highlight_modes[\n",
+       "      'magic_text/x-csrc'] = {'reg':[/^%%pybind11/]};\n",
+       "  Jupyter.notebook.events.one('kernel_ready.Kernel', function(){\n",
+       "      Jupyter.notebook.get_cells().map(function(cell){\n",
+       "          if (cell.cell_type == 'code'){ cell.auto_highlight(); } }) ;\n",
+       "  });\n",
+       "});\n",
+       "} catch (e) {};\n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from pynq.overlays.base import BaseOverlay \n",
+    "import time\n",
+    "import threading\n",
+    "from datetime import datetime\n",
+    "import multiprocessing\n",
+    "import socket\n",
+    "import asyncio \n",
+    "import os"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "2c4aef45",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "base = BaseOverlay(\"base.bit\") \n",
+    "btns = base.btns_gpio"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "1a82f970",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%%microblaze base.PMODA \n",
+    "#include \"gpio.h\"\n",
+    "#include \"pyprintf.h\"\n",
+    "//Function to turn on/off a selected pin of PMODB\n",
+    "void write_gpio(unsigned int pin, unsigned int val){\n",
+    "    if (val > 1){\n",
+    "        pyprintf(\"pin value must be 0 or 1\");\n",
+    "    }\n",
+    "    gpio pin_out = gpio_open(pin);\n",
+    "    gpio_set_direction(pin_out, GPIO_OUT);\n",
+    "    gpio_write(pin_out, val);\n",
+    "}\n",
+    "//Function to read the value of a selected pin of PMODB\n",
+    "unsigned int read_gpio(unsigned int pin){\n",
+    "    gpio pin_in = gpio_open(pin);\n",
+    "    gpio_set_direction(pin_in, GPIO_IN);\n",
+    "    return gpio_read(pin_in);\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "dd671d8b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def buzz(tone_freq):\n",
+    "    buzz_time = 0.5\n",
+    "    cycles = round(tone_freq/buzz_time)\n",
+    "    sleep_time = 1/(4 * tone_freq)\n",
+    "    write_gpio(3, 1)\n",
+    "    for x in range(cycles):\n",
+    "        \n",
+    "        write_gpio(2, 1)\n",
+    "        time.sleep(sleep_time)\n",
+    "        write_gpio(2, 0)\n",
+    "        time.sleep(sleep_time)\n",
+    "        \n",
+    "        "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "8df5756f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def server(PORT):\n",
+    "    print('Server Started')\n",
+    "    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n",
+    "\n",
+    "    HOST = '0.0.0.0' \n",
+    "    sock.bind((HOST, PORT))\n",
+    "    sock.listen(1)\n",
+    "    conn, addr = sock.accept() #conn is a socket object, why is addr ('192.168.2.1', 59527)\n",
+    "    with conn:\n",
+    "        print('Connected by', addr)\n",
+    "        while True:\n",
+    "            #Recieve data from the \"conn\" socket  1024 is The maximum amount of data to be received at once\n",
+    "            data = conn.recv(1024) \n",
+    "            \n",
+    "            #if it recieve the buzz data, buzz the pynq\n",
+    "            if b'buzz' == data: \n",
+    "                buzz(10)\n",
+    "                print('buzzed')\n",
+    "                \n",
+    "            if b'close' == data:\n",
+    "                sock.close()\n",
+    "                break\n",
+    "            #if data: print(data)\n",
+    "            #conn.sendall(data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "c6197a4f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def connect_to_server(HOST, PORT):\n",
+    "    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n",
+    "\n",
+    "    sock.connect((HOST, PORT))\n",
+    "    return sock\n",
+    "    #sock.sendall(b'bruh, world')\n",
+    "    #data = sock.recv(1024)\n",
+    "    #print('Received', repr(data))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "d6edee8a",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "async def get_btns(loop):\n",
+    "    client_sock = None\n",
+    "    print('Starting the client code')\n",
+    "    time.sleep(1)\n",
+    "    while True:\n",
+    "        await asyncio.sleep(0.01)\n",
+    "        #button 3 stops the code\n",
+    "        \n",
+    "        if btns[3].read() != 0:\n",
+    "            break\n",
+    "            if client_sock: \n",
+    "                client_sock.sendall(b'close')\n",
+    "                print('Ending Session and breaking')\n",
+    "                client_sock.close()\n",
+    "                loop.close() \n",
+    "                break\n",
+    "        #end session\n",
+    "        elif btns[2].read() != 0:\n",
+    "            if client_sock:\n",
+    "                client_sock.sendall(b'close')\n",
+    "                print('Ending Session and breaking')\n",
+    "                client_sock.close()\n",
+    "                loop.close() \n",
+    "                break\n",
+    "        # Send signal to buzz other pynq\n",
+    "        elif btns[1].read() != 0:\n",
+    "            print('pressed btn 1')\n",
+    "            if client_sock:\n",
+    "                client_sock.sendall(b'buzz')\n",
+    "                print('sent the buzz')\n",
+    "                await asyncio.sleep(1)\n",
+    "            else:\n",
+    "                print('Not connected to Server')\n",
+    "                await asyncio.sleep(1)\n",
+    "        # Connect to server button\n",
+    "        elif btns[0].read() != 0:\n",
+    "            if client_sock == None:\n",
+    "                try:\n",
+    "                    client_sock = connect_to_server('192.168.2.1',50001)\n",
+    "                    #client_sock = connect_to_server('192.168.2.99',1000)\n",
+    "                    print('Connected to Server')\n",
+    "                    await asyncio.sleep(1)\n",
+    "                except:\n",
+    "                    print('Unable to connected to Server')\n",
+    "                    await asyncio.sleep(0.3)\n",
+    "            else: # I had to do this as when the btns were pushed because of the small await\n",
+    "                    # it would run this code multiple times\n",
+    "                print('Already connected')\n",
+    "\n",
+    "            \n",
+    "    print('end')\n",
+    "    \n",
+    "    \n",
+    "def run_client():\n",
+    "    loop = asyncio.new_event_loop()\n",
+    "    loop.create_task(get_btns(loop))\n",
+    "    loop.run_forever()\n",
+    "    loop.close() "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "96146006",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "starting p1\n",
+      "starting p2\n",
+      "Start\n",
+      "Starting the client code\n",
+      "Server Started\n",
+      "Connected to ServerConnected by \n",
+      "('192.168.2.1', 55259)\n",
+      "pressed btn 1\n",
+      "sent the buzz\n",
+      "buzzed\n",
+      "pressed btn 1\n",
+      "sent the buzz\n",
+      "buzzed\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Process Process-4:\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Ending Session and breaking"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Traceback (most recent call last):\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "  File \"/usr/lib/python3.8/multiprocessing/process.py\", line 315, in _bootstrap\n",
+      "    self.run()\n",
+      "  File \"/usr/lib/python3.8/multiprocessing/process.py\", line 108, in run\n",
+      "    self._target(*self._args, **self._kwargs)\n",
+      "  File \"<ipython-input-5-f4a29b432962>\", line 22, in server\n",
+      "    Break\n",
+      "NameError: name 'Break' is not defined\n"
+     ]
+    }
+   ],
+   "source": [
+    "procs = [] # a future list of all our processes\n",
+    "\n",
+    "print('starting p1')\n",
+    "# Launch process1 on CPU0\n",
+    "p1 = multiprocessing.Process(target=run_client)\n",
+    "os.system(\"taskset -p -c {} {}\".format(1, p1.pid)) # taskset is an os command to pin the process to a specific CPU\n",
+    "procs.append(p1)\n",
+    "\n",
+    "print('starting p2')\n",
+    "# Launch process1 on CPU0\n",
+    "p2 = multiprocessing.Process(target=server, args=(1001,))\n",
+    "os.system(\"taskset -p -c {} {}\".format(0, p2.pid)) # taskset is an os command to pin the process to a specific CPU\n",
+    "procs.append(p2)\n",
+    "\n",
+    "print('Start')\n",
+    "p1.start() # start the process\n",
+    "p2.start() # start the proces\n",
+    "\n",
+    "p1Name = p1.name # get process1 name\n",
+    "p2Name = p2.name # get process1 name\n",
+    "                             \n",
+    "p1.join()\n",
+    "p2.join()\n",
+    "\n",
+    "print('Process 1 with name, {}, is finished'.format(p1Name))\n",
+    "print('Process 2 with name, {}, is finished'.format(p2Name))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "7619ffdb",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "buzz(50)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0c39569b",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.2"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
